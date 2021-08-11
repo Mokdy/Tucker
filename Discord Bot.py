@@ -12,8 +12,25 @@ client = discord.Client(intents=intents)
 POINTS_UPPER_LIMIT = 1000
 POINTS_LOWER_LIMIT = 0
 POINTS_ADDING_RATE = 1
-POINTS_SUBTRACTING_RATE = 0.02
+POINTS_SUBTRACTING_RATE = 0.04
 REQUIRED_POINTS = 600
+
+# Function that searches for a given name in a guild and returns a member object
+async def lookup_name(message ,requested_name : str):
+    guild = message.author.guild
+    matches = []
+    for member in guild.members:
+        if requested_name.lower() in member.name.lower() and member.bot is False : matches.append(member)
+    if len(matches) == 0:
+        await message.channel.send("'{}' was not found.".format(requested_name))
+        return None
+    elif len(matches) > 1:
+        names = ""
+        for member in matches: names += "-" + member.name + "\n"
+        await message.channel.send("Multiple users with the name '{0}' were found:\n{1}".format(requested_name, names))
+        return None
+    return matches[0]
+
 
 # Function that recieves a guild object and registers it in the JSON file if it was not already there
 def parsing_new_guild(guild):
@@ -138,9 +155,12 @@ async def on_member_join(member):
     with open("data.json", "w") as f:
         json.dump(json_content, f)
 
+# This event triggers when a member sends a message
 @client.event
 async def on_message(message):
-    if message.content == "--help":
+    content = message.content
+    guild = message.author.guild
+    if content == "--help":
         global POINTS_ADDING_RATE
         global POINTS_SUBTRACTING_RATE
         global POINTS_UPPER_LIMIT
@@ -148,65 +168,68 @@ async def on_message(message):
         await message.channel.send("""Tucker determines whether certain members of this server are being active and frequently joining or not. Based on that, an "Active" rank is awarded.
 Present, unmuted, and undeafened members will obtain {0} **Active Point** every minute, while other absent members slowly lose **Active Point** at a rate of {1} every minute.
 The required number of **Active Points** to achieve the "Active" rank is {2}. Though, there is an upper limit of {3} that each user may obtain.
-        --mypoints : Displays the amount of **Active Points** you currently have.
-        --lookup <user_id> : Displays the amount of **Active Points** the user has.
+        --me : Displays the amount of **Active Points** you currently have.
+        --lookup <name> : Displays the amount of **Active Points** the user has.
         --rates : Displays the rates at which **Active Points** are awarded/deducted.
-        --add <number> <user_id> : Adds **Active Points** to the specified user.              
+        --add <number> <name> : Adds **Active Points** to the specified user.              
 """.format(POINTS_ADDING_RATE, POINTS_SUBTRACTING_RATE, REQUIRED_POINTS, POINTS_UPPER_LIMIT))
 
-    elif message.content == "--mypoints":
+    elif content == "--me":
         with open("data.json", "r") as f:
             json_content = json.load(f)
-        guild_id = str(message.author.guild.id)
+        guild_id = str(guild.id)
         member_id = str(message.author.id)
         active_points = json_content[guild_id][member_id]
         await message.channel.send("{0}, you currently have {1}/{2} **Active Points.**".format(message.author.name, round(active_points, 3), POINTS_UPPER_LIMIT))
 
-    elif message.content == "--rates":
+    elif content == "--rates":
         await message.channel.send("""Adding rate = {0} **Active Point**/min
 Subtracting rate = {1} **Active Point**/min
 Upper limit = {2} **Active Points**
 Required points to obtain role = {3} **Active Points**
 """.format(POINTS_ADDING_RATE, POINTS_SUBTRACTING_RATE, POINTS_UPPER_LIMIT, REQUIRED_POINTS))
 
-    elif message.content.split(" ")[0] == "--lookup":
-        if(len(message.content.split(" ")) != 2):
-            await message.channel.send('Invalid command format!\nPlease follow this format "--lookup 231396915730841600".')
+    elif content.split(" ")[0] == "--lookup":
+        if(len(content.split(" ")) != 2):
+            await message.channel.send('Invalid command format!\nPlease follow this format "--lookup Mokdy".')
         else:
             with open("data.json", "r") as f:
                 json_content = json.load(f)
-            requested_id = message.content.split(" ")[1]
-            guild_id = str(message.author.guild.id)
-            if requested_id not in json_content[guild_id]:
-                await message.channel.send('User code "{}" not found in the database!\nPlease follow this format "--lookup 231396915730841600".'.format(requested_id))
-            else:
-                active_points = json_content[guild_id][requested_id]
-                await message.channel.send('{0} currently has {1} **Active Points**.'.format(message.author.guild.get_member(int(requested_id)).name, round(active_points, 3)))
-    elif message.content.split(" ")[0] == "--add":
-        if(len(message.content.split(" ")) != 3):
-            await message.channel.send('Invalid command format!\nPlease follow this format "--add 412 231396915730841600".')
+            user_query = content.split(" ")[1]
+            guild_id = str(guild.id)
+            member_result = await lookup_name(message, user_query)
+            if member_result is not None:
+                active_points = json_content[guild_id][str(member_result.id)]
+                await message.channel.send('{0} currently has {1} **Active Points**.'.format(member_result.name, round(active_points, 3)))
+    
+    elif content.split(" ")[0] == "--add":
+        if(len(content.split(" ")) != 3):
+            await message.channel.send('Invalid command format!\nPlease follow this format "--add 412 Mokdy".')
         else:
             with open("data.json", "r") as f:
                 json_content = json.load(f)
-            added_points = message.content.split(" ")[1]
-            requested_id = message.content.split(" ")[2]
-            guild_id = str(message.author.guild.id)
-            if requested_id not in json_content[guild_id]:
-                await message.channel.send('User code "{}" not found in the database!\nPlease follow this format "--add 412 231396915730841600".'.format(requested_id))
-            else:
+            added_points = content.split(" ")[1]
+            user_query = content.split(" ")[2]
+            guild_id = str(guild.id)
+            member_result = await lookup_name(message, user_query)
+            if member_result is not None:
                 try:
+                    member_id = str(member_result.id)
                     added_points = float(added_points)
                     author_permission = message.author.top_role.permissions
-                    if message.author.id == message.author.guild.owner_id or author_permission.administrator == True:
-                        json_content[guild_id][str(requested_id)] += added_points
-                        if json_content[guild_id][str(requested_id)] > POINTS_UPPER_LIMIT: json_content[guild_id][str(requested_id)] = POINTS_UPPER_LIMIT
-                        elif json_content[guild_id][str(requested_id)] < POINTS_LOWER_LIMIT: json_content[guild_id][str(requested_id)] = POINTS_LOWER_LIMIT
-                        await message.channel.send('{0} now obtains {1} **Active Points**.'.format(message.author.guild.get_member(int(requested_id)).name, round(json_content[guild_id][str(requested_id)], 3)))
+                    if message.author.id == guild.owner_id or author_permission.administrator == True:
+                        json_content[guild_id][member_id] += added_points
+                        if json_content[guild_id][member_id] > POINTS_UPPER_LIMIT: json_content[guild_id][member_id] = POINTS_UPPER_LIMIT
+                        elif json_content[guild_id][member_id] < POINTS_LOWER_LIMIT: json_content[guild_id][member_id] = POINTS_LOWER_LIMIT
+                        await message.channel.send('{0} now obtains {1} **Active Points**.'.format(guild.get_member(int(member_id)).name, round(json_content[guild_id][member_id], 3)))
                         with open("data.json", "w") as f:
                             json.dump(json_content, f)
                     else:
                         await message.channel.send('{}, only administrators and server owner can use this command.'.format(message.author.name))
                 except Exception as e:
-                    await message.channel.send('"{}" is not a valid number!\nPlease follow this format "--add 412 231396915730841600".'.format(added_points))
+                    await message.channel.send('"{}" is not a valid number!\nPlease follow this format "--add 412 Mokdy".'.format(added_points))
+    
+    elif content[0:2] == "--":
+        await message.channel.send("'{}' is an invalid command, type --help to find all commands.".format(content))
                     
 client.run(TOKEN)
