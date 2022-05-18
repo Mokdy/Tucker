@@ -12,7 +12,7 @@ client = discord.Client(intents=intents)
 POINTS_UPPER_LIMIT = 1000
 POINTS_LOWER_LIMIT = 0
 POINTS_ADDING_RATE = 1
-POINTS_SUBTRACTING_RATE = 0.04
+POINTS_SUBTRACTING_RATE = 0.06 # Takes 10 days to go from 1000 points to 600
 REQUIRED_POINTS = 600
 
 # Function that searches for a given name in a guild and returns a member object
@@ -20,7 +20,10 @@ async def lookup_name(message ,requested_name : str):
     guild = message.author.guild
     matches = []
     for member in guild.members:
-        if requested_name.lower() in member.name.lower() and member.bot is False : matches.append(member)
+        name = member.name.lower()
+        if member.nick:
+            name = member.nick.lower()
+        if requested_name.lower() in name and member.bot is False : matches.append(member)
     if len(matches) == 0:
         await message.channel.send("'{}' was not found.".format(requested_name))
         return None
@@ -165,14 +168,14 @@ async def on_message(message):
         global POINTS_SUBTRACTING_RATE
         global POINTS_UPPER_LIMIT
         global REQUIRED_POINTS
-        await message.channel.send("""Tucker determines whether certain members of this server are being active and frequently joining or not. Based on that, an "Active" rank is awarded.
-Present, unmuted, and undeafened members will obtain {0} **Active Point** every minute, while other absent members slowly lose **Active Point** at a rate of {1} every minute.
-The required number of **Active Points** to achieve the "Active" rank is {2}. Though, there is an upper limit of {3} that each user may obtain.
+        await message.channel.send("""**Tucker Commands:**
         --me : Displays the amount of **Active Points** you currently have.
         --lookup <name> : Displays the amount of **Active Points** the user has.
         --rates : Displays the rates at which **Active Points** are awarded/deducted.
-        --add <number> <name> : Adds **Active Points** to the specified user.              
-""".format(POINTS_ADDING_RATE, POINTS_SUBTRACTING_RATE, REQUIRED_POINTS, POINTS_UPPER_LIMIT))
+        --add <number> <name> : Adds **Active Points** to the specified user.
+        --top <number> : Displays the top **Active Points** holders.
+        --help : Displays this message.              
+""")
 
     elif content == "--me":
         with open("data.json", "r") as f:
@@ -229,6 +232,47 @@ Required points to obtain role = {3} **Active Points**
                 except Exception as e:
                     await message.channel.send('"{}" is not a valid number!\nPlease follow this format "--add 412 Mokdy".'.format(added_points))
     
+    elif content.split(" ")[0] == "--top":
+        if(len(content.split(" ")) != 2):
+            await message.channel.send('Invalid command format!\nPlease follow this format "--top 5".')
+        else:
+            with open("data.json", "r") as f:
+                json_content = json.load(f)
+            guild_id = str(guild.id)
+            top_number = content.split(" ")[1]
+            top_number = int(top_number)
+            top_list = []
+            for member_id in json_content[guild_id]:
+                top_list.append((member_id, json_content[guild_id][member_id]))
+            top_list.sort(key=lambda x: x[1], reverse=True)
+            top_list = top_list[:top_number]
+            top_list_string = ""
+
+            top_list_scores = []
+            for i in range(len(top_list)):
+                top_list_scores.append(top_list[i][1])
+            top_list_scores = list(set(top_list_scores))
+            top_list_scores.sort(reverse=True)
+            print(top_list_scores)
+
+            if len(top_list_scores) > 3:
+                top_list_scores = top_list_scores[:3]
+            
+            if top_list_scores[-1] == POINTS_LOWER_LIMIT:
+                print(top_list_scores.pop())
+            
+            for i in range(len(top_list)):
+                medal = "\t   "
+                if top_list[i][1] in top_list_scores:
+                    if top_list[i][1] == top_list_scores[0]:
+                        medal = ":first_place:"
+                    elif top_list[i][1] == top_list_scores[1]:
+                        medal = ":second_place:"
+                    elif top_list[i][1] == top_list_scores[2]:
+                        medal = ":third_place:"
+                top_list_string += "{2}{0} : {1}\n".format(guild.get_member(int(top_list[i][0])).name, round(top_list[i][1], 3), medal)
+            await message.channel.send("**Top {0}**:\n{1}".format(top_number, top_list_string))
+
     elif content[0:2] == "--":
         await message.channel.send("'{}' is an invalid command, type --help to find all commands.".format(content))
                     
