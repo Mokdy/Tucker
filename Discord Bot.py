@@ -12,7 +12,7 @@ client = discord.Client(intents=intents)
 POINTS_UPPER_LIMIT = 1000
 POINTS_LOWER_LIMIT = 0
 POINTS_ADDING_RATE = 1
-POINTS_SUBTRACTING_RATE = 0.06 # Takes 10 days to go from 1000 points to 600
+POINTS_SUBTRACTING_RATE = 0.03 # Takes 10 days to go from 1000 points to 600
 REQUIRED_POINTS = 600
 
 # Function that searches for a given name in a guild and returns a member object
